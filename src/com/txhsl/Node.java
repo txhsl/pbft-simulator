@@ -100,11 +100,10 @@ public class Node {
                 }
 
                 //judge and start
-                view = 0;
                 voteCounter = 0;
                 state = Node.State.Initial;
 
-                if (height % peers.size() == name){
+                if (isPrimary(height, view)){
                     state = Node.State.Primary;
                     voteCounter += 1;
                     broadcast(new PrepareRequestMessage(name, height, view));
@@ -114,7 +113,7 @@ public class Node {
                 }
                 signal = true;
 
-                while(state != Node.State.Committed && state != Node.State.Waiting) {
+                while(state != Node.State.Committed && state != Node.State.ViewChanging) {
                     synchronized (this) {
                         if (signal && state != Node.State.Waiting) {
                             Node.State temp = state;
@@ -131,6 +130,7 @@ public class Node {
                             }
                             if (state == temp) {
                                 broadcast(new ViewChangeMessage(name, height, view + 1));
+                                voteCounter += 1;
                             }
                         } else {
                             try {
@@ -140,6 +140,18 @@ public class Node {
                             }
                         }
                     }
+                }
+
+                if (state == Node.State.Committed) {
+                    System.out.println("[Node " + name + "] Consensus success. Height: " + height + ", view: " + view);
+                    view = 0;
+                    height += 1;
+                }
+                else {
+                    System.out.println("[Node " + name + "] Consensus failed, view changing. Height: " + height + ", view: " + view);
+                    view += 1;
+                    System.out.println("[Node " + name + "] View changed, number: " + view);
+                    continue;
                 }
 
                 try {
@@ -204,6 +216,7 @@ public class Node {
                 }
                 voteCounter += 1;
                 broadcast(new PrepareResponseMessage(name, (PrepareRequestMessage) msg));
+                voteCounter += 1;
                 signal = true;
             }
         }
@@ -213,7 +226,7 @@ public class Node {
                     return;
                 }
                 voteCounter += 1;
-                if (voteCounter >= 2 * peers.size() / 3 + 1) {
+                if (getEnoughVote(voteCounter)) {
                     state = State.Prepared;
                     broadcast(new CommitMessage(name, (PrepareResponseMessage) msg));
                     voteCounter = 0;
@@ -227,13 +240,11 @@ public class Node {
                     return;
                 }
                 voteCounter += 1;
-                if (voteCounter >= 2 * peers.size() / 3 + 1) {
+                if (getEnoughVote(voteCounter)) {
                     state = State.Committed;
 
                     //commit something
-                    height += 1;
-                    System.out.println("[Node " + name + "] Commits. Height: " + height);
-                    state = State.Waiting;
+                    System.out.println("[Node " + name + "] Commits. But nothing is done here");
                 }
             }
         }
@@ -243,10 +254,8 @@ public class Node {
                     return;
                 }
                 viewChangeCounter += 1;
-                if (viewChangeCounter >= 2 * peers.size() / 3 + 1) {
+                if (getEnoughVote(viewChangeCounter)) {
                     state = State.ViewChanging;
-                    view += 1;
-                    state = State.Initial;
                 }
             }
         }
@@ -255,5 +264,13 @@ public class Node {
 
             }
         }
+    }
+
+    private boolean getEnoughVote(int voteCount) {
+        return voteCount >= 2 * (peers.size() + 1) / 3 + 1;
+    }
+
+    private boolean isPrimary(int height, int view) {
+        return (height + view) % (peers.size() + 1) == name;
     }
 }
