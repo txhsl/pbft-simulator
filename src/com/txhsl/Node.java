@@ -89,7 +89,6 @@ public class Node {
         @Override
         public void run() {
             while(true) {
-
                 synchronized (this) {
                     while(suspend){
                         try {
@@ -117,7 +116,7 @@ public class Node {
 
                 while(state != Node.State.Committed && state != Node.State.Waiting) {
                     synchronized (this) {
-                        if (signal) {
+                        if (signal && state != Node.State.Waiting) {
                             Node.State temp = state;
                             signal = false;
 
@@ -125,18 +124,17 @@ public class Node {
 
                             while (System.currentTimeMillis() - startPoint < WAITLIMIT && state == temp) {
                                 try {
-                                    wait();
+                                    Thread.sleep(DELAY);
                                 } catch (InterruptedException e) {
                                     e.printStackTrace();
                                 }
                             }
-
                             if (state == temp) {
                                 broadcast(new ViewChangeMessage(name, height, view + 1));
                             }
                         } else {
                             try {
-                                wait();
+                                Thread.sleep(DELAY);
                             } catch (InterruptedException e) {
                                 e.printStackTrace();
                             }
@@ -144,7 +142,6 @@ public class Node {
                     }
                 }
 
-                System.out.println("Height " + height + "consensus finished!");
                 try {
                     Thread.sleep(BLOCKTIME);
                 } catch (InterruptedException e) {
@@ -235,7 +232,7 @@ public class Node {
 
                     //commit something
                     height += 1;
-                    System.out.println("Node" + name + " Commits. Height: " + height);
+                    System.out.println("[Node " + name + "] Commits. Height: " + height);
                     state = State.Waiting;
                 }
             }
