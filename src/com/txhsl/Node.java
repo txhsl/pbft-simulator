@@ -130,7 +130,7 @@ public class Node {
                             }
                             if (state == temp) {
                                 broadcast(new ViewChangeMessage(name, height, view + 1));
-                                voteCounter += 1;
+                                viewChangeCounter += 1;
                             }
                         } else {
                             try {
