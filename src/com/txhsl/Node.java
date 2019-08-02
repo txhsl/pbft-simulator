@@ -10,8 +10,10 @@ public class Node {
     public int name;
     public int height = 0;
     public int view = 0;
+    public int targetView = 0;
     public int voteCounter = 0;
     public int viewChangeCounter = 0;
+    public int primaryChangeCounter = 0;
     public State state = State.Waiting;
     public boolean signal = false;
 
@@ -129,7 +131,8 @@ public class Node {
                                 }
                             }
                             if (state == temp) {
-                                broadcast(new ViewChangeMessage(name, height, view + 1));
+                                targetView = view + 1;
+                                broadcast(new ViewChangeMessage(name, height, targetView));
                                 viewChangeCounter += 1;
                             }
                         } else {
@@ -145,11 +148,19 @@ public class Node {
                 if (state == Node.State.Committed) {
                     System.out.println("[Node " + name + "] Consensus success. Height: " + height + ", view: " + view);
                     view = 0;
+                    targetView = 0;
                     height += 1;
+                    state = Node.State.Waiting;
+
+                    //optional primaryChange
+                    if (false) {
+                        primaryChangeCounter += 1;
+                        broadcast(new PrimaryChangeMessage(name, height + 1, (height + 1) % (peers.size() + 1)));
+                    }
                 }
                 else {
                     System.out.println("[Node " + name + "] Consensus failed, view changing. Height: " + height + ", view: " + view);
-                    view += 1;
+                    view = targetView;
                     System.out.println("[Node " + name + "] View changed, number: " + view);
                     continue;
                 }
@@ -250,18 +261,29 @@ public class Node {
         }
         else if (msg.getClass() == ViewChangeMessage.class) {
             if (state != State.Committed && state != State.Initial) {
-                if (msg.getMessage().get("height") != height || msg.getMessage().get("view") != view + 1) {
+                if (msg.getMessage().get("height") != height || msg.getMessage().get("view") < view + 1) {
                     return;
                 }
                 viewChangeCounter += 1;
+                if (msg.getMessage().get("view") > targetView) {
+                    targetView = msg.getMessage().get("view");
+                }
                 if (getEnoughVote(viewChangeCounter)) {
                     state = State.ViewChanging;
                 }
             }
         }
         else if (msg.getClass() == PrimaryChangeMessage.class) {
-            if (state == State.Committed){
-
+            if (state == State.Waiting){
+                if (msg.getMessage().get("height") != height + 1 || !isPrimary(msg.getMessage().get("primary"), height + 1, 1)) {
+                    return;
+                }
+                primaryChangeCounter += 1;
+                if (getEnoughVote(primaryChangeCounter)) {
+                    state = State.PrimaryChanging;
+                    view = 1;
+                    state = State.Waiting;
+                }
             }
         }
     }
@@ -271,6 +293,10 @@ public class Node {
     }
 
     private boolean isPrimary(int height, int view) {
+        return (height + view) % (peers.size() + 1) == name;
+    }
+
+    private boolean isPrimary(int name, int height, int view) {
         return (height + view) % (peers.size() + 1) == name;
     }
 }
