@@ -18,10 +18,13 @@ public class Node {
     public boolean signal = false;
 
     private static long DELAY = 1000;
-    private static long BLOCKTIME = 5000;
-    private static long WAITLIMIT = 5000;
+    private static long BLOCK_TIME = 5000;
+    private static long WAIT_LIMIT = 5000;
+    private static int INITIAL_CREDIT = 5;
+    private static int CREDIT_LIMIT = 5;
 
     public ArrayList<Node> peers = new ArrayList<>();
+    public Map<Integer, Integer> credits = new HashMap<>();
     public Queue<Message> messages = new LinkedBlockingQueue<>();
 
     private PausableThread discoverThread = new PausableThread() {
@@ -45,6 +48,7 @@ public class Node {
                     for (Node node : copy) {
                         if (!peers.contains(node) && node.name != name) {
                             peers.add(node);
+                            credits.putIfAbsent(node.name, INITIAL_CREDIT);
                         }
                     }
                 }
@@ -123,7 +127,7 @@ public class Node {
 
                             long startPoint = System.currentTimeMillis();
 
-                            while (System.currentTimeMillis() - startPoint < WAITLIMIT && state == temp) {
+                            while (System.currentTimeMillis() - startPoint < WAIT_LIMIT && state == temp) {
                                 try {
                                     Thread.sleep(DELAY);
                                 } catch (InterruptedException e) {
@@ -153,9 +157,9 @@ public class Node {
                     state = Node.State.Waiting;
 
                     //optional primaryChange
-                    if (false) {
+                    if (!isPrimary(height + 1, 0) && credits.get(getPrimary(height + 1, 0)) < CREDIT_LIMIT) {
                         primaryChangeCounter += 1;
-                        broadcast(new PrimaryChangeMessage(name, height + 1, (height + 1) % (peers.size() + 1)));
+                        broadcast(new PrimaryChangeMessage(name, height + 1, getPrimary(height + 1, 1)));
                     }
                 }
                 else {
@@ -166,7 +170,7 @@ public class Node {
                 }
 
                 try {
-                    Thread.sleep(BLOCKTIME);
+                    Thread.sleep(BLOCK_TIME);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -198,6 +202,9 @@ public class Node {
 
     public void importPeers(List<Node> nodes) {
         this.peers.addAll(nodes);
+        for (Node node : nodes) {
+            credits.putIfAbsent(node.name, INITIAL_CREDIT);
+        }
     }
 
     private void deliver(Message msg, Node peer) {
@@ -298,5 +305,9 @@ public class Node {
 
     private boolean isPrimary(int name, int height, int view) {
         return (height + view) % (peers.size() + 1) == name;
+    }
+
+    private int getPrimary(int height, int view) {
+        return (height + view) % (peers.size() + 1);
     }
 }
