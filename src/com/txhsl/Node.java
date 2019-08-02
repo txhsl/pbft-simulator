@@ -104,7 +104,7 @@ public class Node {
                 voteCounter = 0;
                 state = Node.State.Initial;
 
-                if ((height + 1) % peers.size() == name){
+                if (height % peers.size() == name){
                     state = Node.State.Primary;
                     voteCounter += 1;
                     broadcast(new PrepareRequestMessage(name, height, view));
