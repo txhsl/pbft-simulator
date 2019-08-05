@@ -7,25 +7,27 @@ public class Node {
 
     public enum State {Waiting, Initial, Primary, BackUp, Prepared, Committed, ViewChanging, PrimaryChanging}
 
-    public int name;
-    public int height = 0;
-    public int view = 0;
-    public int targetView = 0;
-    public int voteCounter = 0;
-    public int viewChangeCounter = 0;
-    public int primaryChangeCounter = 0;
-    public State state = State.Waiting;
-    public boolean signal = false;
+    private int name;
+    private int height = 0;
+    private int view = 0;
+    private int targetView = 0;
+    private int voteCounter = 0;
+    private int viewChangeCounter = 0;
+    private int primaryChangeCounter = 0;
+    private int comfirmChangeCounter = 0;
+    private State state = State.Waiting;
+    public Map<Integer, boolean[]> msgRecord = new HashMap<>();
+    private boolean signal = false;
 
     private static long DELAY = 1000;
     private static long BLOCK_TIME = 5000;
     private static long WAIT_LIMIT = 5000;
     private static int INITIAL_CREDIT = 5;
-    private static int CREDIT_LIMIT = 5;
+    private static int CREDIT_LIMIT = 4;
 
-    public ArrayList<Node> peers = new ArrayList<>();
-    public Map<Integer, Integer> credits = new HashMap<>();
-    public Queue<Message> messages = new LinkedBlockingQueue<>();
+    private ArrayList<Node> peers = new ArrayList<>();
+    private Map<Integer, Integer> credits = new HashMap<>();
+    private Queue<Message> messages = new LinkedBlockingQueue<>();
 
     private PausableThread discoverThread = new PausableThread() {
 
@@ -107,6 +109,11 @@ public class Node {
 
                 //judge and start
                 voteCounter = 0;
+                primaryChangeCounter = 0;
+                msgRecord = new HashMap<>();
+                for (int name : credits.keySet()) {
+                    msgRecord.putIfAbsent(name, new boolean[2]);
+                }
                 state = Node.State.Initial;
 
                 if (isPrimary(height, view)){
@@ -135,7 +142,26 @@ public class Node {
                                 }
                             }
                             if (state == temp) {
-                                targetView = view + 1;
+                                int stage = 0;
+                                switch (state) {
+                                    case Waiting:
+                                    case BackUp:
+                                        stage = 1;
+                                        break;
+                                    case Prepared:
+                                        stage = 2;
+                                }
+
+                                for (int name : credits.keySet()) {
+                                    updateCredit(name, msgRecord.get(name), stage);
+                                }
+                                if (!isPrimary(height, 0) && credits.get(getPrimary(height, 0)) < CREDIT_LIMIT) {
+                                    targetView = view + 2;
+                                }
+                                else {
+                                    targetView = view + 1;
+                                }
+
                                 broadcast(new ViewChangeMessage(name, height, targetView));
                                 viewChangeCounter += 1;
                             }
@@ -150,20 +176,31 @@ public class Node {
                 }
 
                 if (state == Node.State.Committed) {
-                    System.out.println("[Node " + name + "] Consensus success. Height: " + height + ", view: " + view);
+                    String log = "[Node " + name + "] Consensus success. Height: " + height + ", view: " + view + ". Credits:";
+                    for (int name : credits.keySet()) {
+                        log = log + " " + name + "-" + credits.get(name);
+                    }
+                    System.out.println(log);
                     view = 0;
                     targetView = 0;
                     height += 1;
                     state = Node.State.Waiting;
 
                     //optional primaryChange
-                    if (!isPrimary(height + 1, 0) && credits.get(getPrimary(height + 1, 0)) < CREDIT_LIMIT) {
+                    for (int name : credits.keySet()) {
+                        updateCredit(name, msgRecord.get(name), 3);
+                    }
+                    if (!isPrimary(height, 0) && credits.get(getPrimary(height, 0)) < CREDIT_LIMIT) {
                         primaryChangeCounter += 1;
-                        broadcast(new PrimaryChangeMessage(name, height + 1, getPrimary(height + 1, 1)));
+                        broadcast(new PrimaryChangeMessage(name, height, getPrimary(height, 1)));
                     }
                 }
                 else {
-                    System.out.println("[Node " + name + "] Consensus failed, view changing. Height: " + height + ", view: " + view);
+                    String log = "[Node " + name + "] Consensus failed, view changing. Height: " + height + ", view: " + view + ". Credits:";
+                    for (int name : credits.keySet()) {
+                        log = log + " " + name + "-" + credits.get(name);
+                    }
+                    System.out.println(log);
                     view = targetView;
                     System.out.println("[Node " + name + "] View changed, number: " + view);
                     continue;
@@ -228,79 +265,102 @@ public class Node {
         System.out.println(log + "}");
 
         if (msg.getClass() == PrepareRequestMessage.class) {
+            if (msg.getMessage().get("height") != height || msg.getMessage().get("view") != view) {
+                return;
+            }
             if (state == State.BackUp) {
-                if (msg.getMessage().get("height") != height || msg.getMessage().get("view") != view) {
-                    return;
-                }
                 voteCounter += 1;
                 broadcast(new PrepareResponseMessage(name, (PrepareRequestMessage) msg));
                 voteCounter += 1;
                 signal = true;
+
+                msgRecord.get(msg.from)[0] = true;
             }
         }
         else if (msg.getClass() == PrepareResponseMessage.class) {
+            if (msg.getMessage().get("height") != height || msg.getMessage().get("view") != view) {
+                return;
+            }
             if (state == State.Primary || state == State.BackUp) {
-                if (msg.getMessage().get("height") != height || msg.getMessage().get("view") != view) {
-                    return;
-                }
                 voteCounter += 1;
-                if (getEnoughVote(voteCounter)) {
+                if (hasEnoughVote(voteCounter)) {
                     state = State.Prepared;
                     broadcast(new CommitMessage(name, (PrepareResponseMessage) msg));
-                    voteCounter = 0;
+                    voteCounter = 1;
                     signal = true;
                 }
+                msgRecord.get(msg.from)[0] = true;
             }
         }
         else if (msg.getClass() == CommitMessage.class) {
+            if (msg.getMessage().get("height") != height || msg.getMessage().get("view") != view) {
+                return;
+            }
             if (state == State.Prepared) {
-                if (msg.getMessage().get("height") != height || msg.getMessage().get("view") != view) {
-                    return;
-                }
                 voteCounter += 1;
-                if (getEnoughVote(voteCounter)) {
+                if (hasEnoughVote(voteCounter)) {
                     state = State.Committed;
 
                     //commit something
                     System.out.println("[Node " + name + "] Commits. But nothing is done here");
                 }
+                msgRecord.get(msg.from)[1] = true;
             }
         }
         else if (msg.getClass() == ViewChangeMessage.class) {
+            if (msg.getMessage().get("height") != height || msg.getMessage().get("view") < view + 1) {
+                return;
+            }
             if (state != State.Committed && state != State.Initial) {
-                if (msg.getMessage().get("height") != height || msg.getMessage().get("view") < view + 1) {
-                    return;
-                }
                 viewChangeCounter += 1;
                 if (msg.getMessage().get("view") > targetView) {
                     targetView = msg.getMessage().get("view");
                 }
-                if (getEnoughVote(viewChangeCounter)) {
+                if (hasEnoughVote(viewChangeCounter)) {
                     state = State.ViewChanging;
                 }
             }
         }
         else if (msg.getClass() == PrimaryChangeMessage.class) {
-            if (state == State.Waiting){
-                if (msg.getMessage().get("height") != height + 1 || !isPrimary(msg.getMessage().get("primary"), height + 1, 1)) {
-                    return;
-                }
+            if (msg.getMessage().get("height") != height) {
+                return;
+            }
+            if (state == State.Waiting) {
                 primaryChangeCounter += 1;
-                if (getEnoughVote(primaryChangeCounter)) {
+                if (hasEnoughPChangeVote(primaryChangeCounter)) {
                     state = State.PrimaryChanging;
-                    view = 1;
+                    comfirmChangeCounter += 1;
+                    broadcast(new ChangeConfirmMessage((PrimaryChangeMessage) msg));
+                }
+            }
+        }
+        else if (msg.getClass() == ChangeConfirmMessage.class) {
+            if (msg.getMessage().get("height") != height) {
+                return;
+            }
+            if (state == State.Waiting || state == State.PrimaryChanging) {
+                comfirmChangeCounter += 1;
+                if (hasEnoughVote(comfirmChangeCounter)) {
                     state = State.Waiting;
+                    primaryChangeCounter = 0;
+                    comfirmChangeCounter = 0;
+                    view += 1;
+                    System.out.println("[Node " + name + "] Primary changed, now is Node " + getPrimary(height, view));
                 }
             }
         }
     }
 
-    private boolean getEnoughVote(int voteCount) {
+    private boolean hasEnoughVote(int voteCount) {
         return voteCount >= 2 * (peers.size() + 1) / 3 + 1;
     }
 
+    private boolean hasEnoughPChangeVote(int voteCount) {
+        return voteCount >= 2 * peers.size() / 3;
+    }
+
     private boolean isPrimary(int height, int view) {
-        return (height + view) % (peers.size() + 1) == name;
+        return isPrimary(name, height, view);
     }
 
     private boolean isPrimary(int name, int height, int view) {
@@ -309,5 +369,20 @@ public class Node {
 
     private int getPrimary(int height, int view) {
         return (height + view) % (peers.size() + 1);
+    }
+
+    private int calculateCredit(int old, boolean success) {
+        return success ? old / 2 + 5 : old / 2;
+    }
+
+    private void updateCredit(int name, boolean[] record, int stage) {
+        int credit = credits.get(name);
+        if (stage > 0) {
+            credit = calculateCredit(credit, record[0]);
+        }
+        if (stage > 1) {
+            credit = calculateCredit(credit, record[1]);
+        }
+        credits.put(name, credit);
     }
 }

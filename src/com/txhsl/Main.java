@@ -30,6 +30,14 @@ public class Main {
         node2.startConsensus();
         node3.startConsensus();
 
+        try {
+            Thread.sleep(10000);
+        }
+        catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        node0.pause();
+
         while(true) {
             ;
         }
