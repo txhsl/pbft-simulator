@@ -144,7 +144,7 @@ public class Node {
                             if (state == temp) {
                                 int stage = 0;
                                 switch (state) {
-                                    case Waiting:
+                                    case Primary:
                                     case BackUp:
                                         stage = 1;
                                         break;
@@ -183,6 +183,7 @@ public class Node {
                     System.out.println(log);
                     view = 0;
                     targetView = 0;
+                    comfirmChangeCounter = 0;
                     height += 1;
                     state = Node.State.Waiting;
 
@@ -202,6 +203,7 @@ public class Node {
                     }
                     System.out.println(log);
                     view = targetView;
+                    comfirmChangeCounter = 0;
                     System.out.println("[Node " + name + "] View changed, number: " + view);
                     continue;
                 }
@@ -343,7 +345,6 @@ public class Node {
                 if (hasEnoughVote(comfirmChangeCounter)) {
                     state = State.Waiting;
                     primaryChangeCounter = 0;
-                    comfirmChangeCounter = 0;
                     view += 1;
                     System.out.println("[Node " + name + "] Primary changed, now is Node " + getPrimary(height, view));
                 }
