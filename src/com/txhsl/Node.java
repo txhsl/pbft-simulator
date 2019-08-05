@@ -19,11 +19,11 @@ public class Node {
     public Map<Integer, boolean[]> msgRecord = new HashMap<>();
     private boolean signal = false;
 
-    private static long DELAY = 1000;
+    private static long DELAY = 100;
     private static long BLOCK_TIME = 5000;
     private static long WAIT_LIMIT = 5000;
     private static int INITIAL_CREDIT = 5;
-    private static int CREDIT_LIMIT = 4;
+    private static int CREDIT_LIMIT = 3;
 
     private ArrayList<Node> peers = new ArrayList<>();
     private Map<Integer, Integer> credits = new HashMap<>();
@@ -188,6 +188,11 @@ public class Node {
                     state = Node.State.Waiting;
 
                     //optional primaryChange
+                    try {
+                        Thread.sleep(DELAY);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                     for (int name : credits.keySet()) {
                         updateCredit(name, msgRecord.get(name), 3);
                     }
@@ -252,7 +257,13 @@ public class Node {
 
     private void broadcast(Message msg) {
         for (Node peer : peers) {
-            peer.messages.add(msg);
+            peer.addMsg(msg);
+        }
+    }
+
+    private void addMsg(Message msg) {
+        synchronized (this) {
+            messages.add(msg);
         }
     }
 
