@@ -118,6 +118,11 @@ public class Node {
 
                 if (isPrimary(height, view)){
                     state = Node.State.Primary;
+                    try {
+                        Thread.sleep(DELAY);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                     voteCounter += 1;
                     broadcast(new PrepareRequestMessage(name, height, view));
                 }
