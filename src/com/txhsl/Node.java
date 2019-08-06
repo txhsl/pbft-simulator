@@ -20,8 +20,8 @@ public class Node {
     private boolean signal = false;
 
     private static long DELAY = 100;
-    private static long BLOCK_TIME = 5000;
-    private static long WAIT_LIMIT = 5000;
+    private static long BLOCK_TIME = 2000;
+    private static long WAIT_LIMIT = 2000;
     private static int INITIAL_CREDIT = 5;
     private static int CREDIT_LIMIT = 3;
 
@@ -131,6 +131,7 @@ public class Node {
                 }
                 signal = true;
 
+                int stage = 0;
                 while(state != Node.State.Committed && state != Node.State.ViewChanging) {
                     synchronized (this) {
                         if (signal && state != Node.State.Waiting) {
@@ -147,7 +148,6 @@ public class Node {
                                 }
                             }
                             if (state == temp) {
-                                int stage = 0;
                                 switch (state) {
                                     case Primary:
                                     case BackUp:
@@ -157,17 +157,7 @@ public class Node {
                                         stage = 2;
                                 }
 
-                                for (int name : credits.keySet()) {
-                                    updateCredit(name, msgRecord.get(name), stage);
-                                }
-                                if (!isPrimary(height, 0) && credits.get(getPrimary(height, 0)) < CREDIT_LIMIT) {
-                                    targetView = view + 2;
-                                }
-                                else {
-                                    targetView = view + 1;
-                                }
-
-                                broadcast(new ViewChangeMessage(name, height, targetView));
+                                broadcast(new ViewChangeMessage(name, height, view + 1));
                                 viewChangeCounter += 1;
                             }
                         } else {
@@ -214,8 +204,17 @@ public class Node {
                     System.out.println(log);
                     view = targetView;
                     comfirmChangeCounter = 0;
+                    state = Node.State.Waiting;
                     System.out.println("[Node " + name + "] View changed, number: " + view);
-                    continue;
+
+                    for (int name : credits.keySet()) {
+                        updateCredit(name, msgRecord.get(name), stage);
+                    }
+                    if (!isPrimary(height, 0) && credits.get(getPrimary(height, 0)) < CREDIT_LIMIT) {
+                        targetView = view + 1;
+                        primaryChangeCounter += 1;
+                        broadcast(new PrimaryChangeMessage(name, height, getPrimary(height, targetView)));
+                    }
                 }
 
                 try {
