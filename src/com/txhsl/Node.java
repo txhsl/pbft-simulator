@@ -231,6 +231,21 @@ public class Node {
         handlerThread.start();
         discoverThread.start();
     }
+    public void setBlockTime(long mills) {
+        BLOCK_TIME = mills;
+    }
+
+    public void setWaitLimit(long mills) {
+        WAIT_LIMIT = mills;
+    }
+
+    public void setDelay(long mills) {
+        DELAY = mills;
+    }
+
+    public void setCreditLimit(int limit) {
+        CREDIT_LIMIT = limit;
+    }
 
     public void startConsensus() {
         consensusThread.start();
@@ -246,6 +261,27 @@ public class Node {
         discoverThread.toResume();
         handlerThread.toResume();
         consensusThread.toResume();
+    }
+
+    public void stop() {
+        discoverThread.stop();
+        handlerThread.stop();
+        consensusThread.stop();
+    }
+
+    public void addBreakPoint(long mills) {
+        Thread breakPoint = new Thread() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(mills);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                pause();
+            }
+        };
+        breakPoint.start();
     }
 
     public void importPeers(List<Node> nodes) {
