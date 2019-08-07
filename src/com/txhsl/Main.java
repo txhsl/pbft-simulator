@@ -162,7 +162,8 @@ public class Main {
                 break;
             case "help":
                 System.out.println("Available commands:");
-                System.out.println("run    (--node, --delay, --blocktime, --waitlimit, --creditlimit, --duration)");
+                System.out.println("    test    (--node, --delay, --blocktime, --waitlimit, --creditlimit, --duration, --breakpoint)");
+                System.out.println("    run    (--node, --delay, --blocktime, --waitlimit, --creditlimit)");
                 break;
             default:
                 System.out.println("Unknown cmd " + args[1]);
