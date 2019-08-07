@@ -1,6 +1,7 @@
 package com.txhsl;
 
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class Node {
@@ -25,7 +26,7 @@ public class Node {
     private static int INITIAL_CREDIT = 5;
     private static int CREDIT_LIMIT = 3;
 
-    private ArrayList<Node> peers = new ArrayList<>();
+    private CopyOnWriteArrayList<Node> peers = new CopyOnWriteArrayList<>();
     private Map<Integer, Integer> credits = new HashMap<>();
     private Queue<Message> messages = new LinkedBlockingQueue<>();
 
@@ -46,8 +47,7 @@ public class Node {
                 }
 
                 for (Node peer : peers) {
-                    ArrayList<Node> copy = new ArrayList<>(peer.peers);
-                    for (Node node : copy) {
+                    for (Node node : peer.peers) {
                         if (!peers.contains(node) && node.name != name) {
                             peers.add(node);
                             credits.putIfAbsent(node.name, INITIAL_CREDIT);
